@@ -72,6 +72,8 @@ class Policy(nn.Module):
         # TODO: Define two linear layers: self.fc1 and self.fc2
         # self.fc1 should map from self.state_dim to hidden_size
         # self.fc2 should map from hidden_size to self.n_actions
+        self.fc1 = nn.Linear(self.state_dim, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, self.n_actions)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -90,8 +92,15 @@ class Policy(nn.Module):
         # TODO: Apply fc1 followed by ReLU (Flatten input if needed)
         # TODO: Apply fc2 to get logits
         # TODO: Return softmax over logits along the last dimension
-        pass
+        if x.dim() == 1:
+            x = x.unsqueeze(0)
+        if x.dim() > 2:
+            x = x.flatten(start_dim=1)
+        x = torch.relu(self.fc1(x))
+        logits = self.fc2(x)
 
+        #return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
+        return torch.softmax(logits, dim=-1)
 
 class REINFORCEAgent(AbstractAgent):
     """
@@ -164,7 +173,16 @@ class REINFORCEAgent(AbstractAgent):
         # TODO: Pass state through the policy network to get action probabilities
         # If evaluate is True, return the action with highest probability
         # Otherwise, sample from the action distribution and return the log-probability as a key in the dictionary (Hint: use torch.distributions.Categorical)
-        return 0, {}  # Placeholder return value
+        x = self.policy(torch.tensor(state, dtype=torch.float32))
+        info_out = {}
+        if evaluate:
+            action = torch.argmax(x).item()
+        else:
+            dist = torch.distributions.Categorical(x)
+            action = dist.sample().item()
+            log_prob = dist.log_prob(torch.tensor(action))
+            info_out["log_prob"] = log_prob#.item()
+        return action, info_out  # Placeholder return value
 
     def compute_returns(self, rewards: List[float]) -> torch.Tensor:
         """
@@ -186,7 +204,12 @@ class REINFORCEAgent(AbstractAgent):
         #       - Update R = r + gamma * R
         #       - Insert R at the beginning of the returns list
         # TODO: Convert the list of returns to a torch.Tensor and return
-        pass
+        R = 0
+        returns = []
+        for r in rewards:
+            R = r + self.gamma * R
+            returns.insert(0, R)
+        return torch.tensor(returns, dtype=torch.float32)
 
     def update_agent(
         self,
@@ -216,7 +239,9 @@ class REINFORCEAgent(AbstractAgent):
 
         # TODO: Normalize returns with mean and standard deviation,
         # and add 1e-8 to the denominator to avoid division by zero
-        norm_returns = returns_t
+        mean = returns_t.mean()
+        std = returns_t.std()
+        norm_returns = (returns_t - mean) / (std + 1e-8)
 
         lp_tensor = torch.stack(log_probs)
         loss = -torch.sum(lp_tensor * norm_returns)
@@ -280,11 +305,26 @@ class REINFORCEAgent(AbstractAgent):
         self.policy.eval()
         returns: List[float] = []  # noqa: F841
         # TODO: rollout num_episodes in eval_env and aggregate undiscounted returns across episodes
+        for _ in range(num_episodes):
+            state, _ = eval_env.reset()
+            done = False
+            total_return = 0.0
+
+            while not done:
+                action, _ = self.predict_action(state, evaluate=True)
+                next_state, reward, term, trunc, _ = eval_env.step(action)
+                done = term or trunc
+                total_return += reward
+                state = next_state
+
+            returns.append(total_return)
 
         self.policy.train()  # Set back to training mode
 
         # TODO: Return the mean and std of the returns across episodes
-        return 0.0, 0.0
+        mean_return = np.mean(returns)
+        std_return = np.std(returns)
+        return mean_return, std_return
 
     def train(
         self,
