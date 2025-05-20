@@ -9,6 +9,8 @@ import torch.optim as optim
 from omegaconf import DictConfig
 from rl_exercises.agent import AbstractAgent
 
+import pandas as pd
+
 
 def set_seed(env: gym.Env, seed: int = 0) -> None:
     """
@@ -284,7 +286,7 @@ class REINFORCEAgent(AbstractAgent):
 
     def evaluate(
         self, eval_env: gym.Env, num_episodes: int = 10
-    ) -> Tuple[float, float]:
+    ) -> List[float]:
         """
         Evaluate policy over multiple episodes.
 
@@ -320,12 +322,11 @@ class REINFORCEAgent(AbstractAgent):
             returns.append(total_return)
 
         self.policy.train()  # Set back to training mode
-        print(returns)
 
         # TODO: Return the mean and std of the returns across episodes
-        mean_return = np.mean(returns)
-        std_return = np.std(returns)
-        return mean_return, std_return
+        #mean_return = np.mean(returns)
+        #std_return = np.std(returns)
+        return returns
 
     def train(
         self,
@@ -343,6 +344,7 @@ class REINFORCEAgent(AbstractAgent):
         eval_interval : int, optional
             Frequency of evaluation prints (default is 10).
         """
+        eval_rewards = []
         eval_env = gym.make(self.env.spec.id)  # fresh copy for eval
         for ep in range(1, num_episodes + 1):
             state, _ = self.env.reset()
@@ -355,7 +357,8 @@ class REINFORCEAgent(AbstractAgent):
                 done = term or trunc
                 batch.append((state, action, float(reward), next_state, done, info))
                 state = next_state
-
+            #to limit the trajectory length
+            #batch = batch[:100]
             loss = self.update_agent(batch)
             total_return = sum(r for _, _, r, *_ in batch)
             self.total_episodes += 1
@@ -364,10 +367,11 @@ class REINFORCEAgent(AbstractAgent):
                 print(f"[Train] Ep {ep:3d} Return {total_return:5.1f} Loss {loss:.3f}")
 
             if ep % eval_interval == 0:
-                mean_ret, std_ret = self.evaluate(eval_env, num_episodes=eval_episodes)
-                print(f"[Eval ] Ep {ep:3d} AvgReturn {mean_ret:5.1f} ± {std_ret:4.1f}")
+                eval_rewards.append(self.evaluate(eval_env, num_episodes=eval_episodes))
+                print(f"[Eval ] Ep {ep:3d}")
 
         print("Training complete.")
+        return eval_rewards
 
 
 @hydra.main(
@@ -407,11 +411,18 @@ def main(cfg: DictConfig) -> None:
     )
 
     # Train agent
-    agent.train(
+    eval_rewards = agent.train(
         num_episodes=cfg.train.episodes,
         eval_interval=cfg.train.eval_interval,
-        eval_episodes=cfg.train.eval_episodes,
+        eval_episodes=cfg.train.eval_episodes
     )
+    df = pd.DataFrame({
+        'seed': cfg.seed,
+        'return': eval_rewards
+    })
+    name = "alpha_1e-3"
+    csv_path = f'eval_{name}_seed{cfg.seed}.csv'
+    df.to_csv(csv_path, index=False)
 
 
 if __name__ == "__main__":
