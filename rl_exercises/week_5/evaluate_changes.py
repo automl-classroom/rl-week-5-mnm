@@ -1,12 +1,10 @@
-from policy_gradient import REINFORCEAgent
-from omegaconf import DictConfig
 import gymnasium as gym
 import hydra
 import numpy as np
 import torch
 import torch.nn as nn
-
-
+from omegaconf import DictConfig
+from policy_gradient import REINFORCEAgent
 
 
 class Policy(nn.Module):
@@ -78,7 +76,7 @@ class Policy(nn.Module):
         x = torch.relu(self.fc1(x))
         logits = self.fc2(x)
 
-        #return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
+        # return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
         return torch.softmax(logits, dim=-1)
 
 
@@ -100,6 +98,7 @@ def set_seed(env: gym.Env, seed: int = 0) -> None:
         env.action_space.seed(seed)
     if hasattr(env.observation_space, "seed"):
         env.observation_space.seed(seed)
+
 
 @hydra.main(
     config_path="../configs/agent/", config_name="reinforce", version_base="1.1"

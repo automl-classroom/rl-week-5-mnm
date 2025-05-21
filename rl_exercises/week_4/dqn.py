@@ -302,7 +302,6 @@ class DQNAgent(AbstractAgent):
                     print(
                         f"Frame {frame}, AvgReward(10): {avg:.2f}, ε={self.epsilon():.3f}"
                     )
-                
 
         print("Training complete.")
 

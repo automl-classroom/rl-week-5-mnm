@@ -99,8 +99,9 @@ class Policy(nn.Module):
         x = torch.relu(self.fc1(x))
         logits = self.fc2(x)
 
-        #return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
+        # return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
         return torch.softmax(logits, dim=-1)
+
 
 class REINFORCEAgent(AbstractAgent):
     """
@@ -176,12 +177,13 @@ class REINFORCEAgent(AbstractAgent):
         x = self.policy(torch.tensor(state, dtype=torch.float32))
         info_out = {}
         if evaluate:
-            action = torch.argmax(x).item()
+            action = torch.argmax(x[0]).item()
         else:
             dist = torch.distributions.Categorical(x)
-            action = dist.sample().item()
-            log_prob = dist.log_prob(torch.tensor(action))
-            info_out["log_prob"] = log_prob#.item()
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            info_out["log_prob"] = log_prob
+            action = action.item()
         return action, info_out  # Placeholder return value
 
     def compute_returns(self, rewards: List[float]) -> torch.Tensor:
@@ -205,8 +207,13 @@ class REINFORCEAgent(AbstractAgent):
         #       - Insert R at the beginning of the returns list
         # TODO: Convert the list of returns to a torch.Tensor and return
         R = 0
-        returns = []
+        """returns = []
         for r in rewards:
+            R = r + self.gamma * R
+            returns.insert(0, R)
+        return torch.tensor(returns, dtype=torch.float32)"""
+        returns = []
+        for r in reversed(rewards):
             R = r + self.gamma * R
             returns.insert(0, R)
         return torch.tensor(returns, dtype=torch.float32)
@@ -236,12 +243,14 @@ class REINFORCEAgent(AbstractAgent):
 
         # compute discounted returns
         returns_t = self.compute_returns(rewards)
+        print("returns:", returns_t)
 
         # TODO: Normalize returns with mean and standard deviation,
         # and add 1e-8 to the denominator to avoid division by zero
         mean = returns_t.mean()
         std = returns_t.std()
         norm_returns = (returns_t - mean) / (std + 1e-8)
+        # norm_returns = returns_t
 
         lp_tensor = torch.stack(log_probs)
         loss = -torch.sum(lp_tensor * norm_returns)
