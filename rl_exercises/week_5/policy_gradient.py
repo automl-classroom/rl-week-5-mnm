@@ -98,8 +98,6 @@ class Policy(nn.Module):
             x = x.flatten(start_dim=1)
         x = torch.relu(self.fc1(x))
         logits = self.fc2(x)
-
-        # return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
         return torch.softmax(logits, dim=-1)
 
 
@@ -207,11 +205,6 @@ class REINFORCEAgent(AbstractAgent):
         #       - Insert R at the beginning of the returns list
         # TODO: Convert the list of returns to a torch.Tensor and return
         R = 0
-        """returns = []
-        for r in rewards:
-            R = r + self.gamma * R
-            returns.insert(0, R)
-        return torch.tensor(returns, dtype=torch.float32)"""
         returns = []
         for r in reversed(rewards):
             R = r + self.gamma * R
@@ -327,7 +320,6 @@ class REINFORCEAgent(AbstractAgent):
             returns.append(total_return)
 
         self.policy.train()  # Set back to training mode
-        print(returns)
 
         # TODO: Return the mean and std of the returns across episodes
         mean_return = np.mean(returns)

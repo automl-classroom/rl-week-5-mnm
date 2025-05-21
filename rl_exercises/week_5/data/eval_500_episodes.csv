@@ -1,0 +1,5 @@
+seed,return
+0,"[np.float64(9.8), np.float64(8.2), np.float64(9.2), np.float64(9.0), np.float64(9.2), np.float64(9.2), np.float64(52.4), np.float64(9.2), np.float64(34.0), np.float64(26.0)]"
+1,"[np.float64(9.8), np.float64(9.2), np.float64(8.8), np.float64(9.0), np.float64(9.2), np.float64(9.4), np.float64(58.2), np.float64(9.4), np.float64(34.8), np.float64(27.4)]"
+2,"[np.float64(9.4), np.float64(10.0), np.float64(9.8), np.float64(9.0), np.float64(9.4), np.float64(10.0), np.float64(40.8), np.float64(9.4), np.float64(43.2), np.float64(27.2)]"
+3,"[np.float64(9.4), np.float64(9.0), np.float64(9.6), np.float64(10.0), np.float64(9.8), np.float64(9.2), np.float64(52.2), np.float64(9.6), np.float64(37.2), np.float64(23.8)]"

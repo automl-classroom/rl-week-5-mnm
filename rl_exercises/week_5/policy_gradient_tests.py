@@ -74,7 +74,8 @@ class Policy(nn.Module):
         # self.fc1 should map from self.state_dim to hidden_size
         # self.fc2 should map from hidden_size to self.n_actions
         self.fc1 = nn.Linear(self.state_dim, hidden_size)
-        self.fc2 = nn.Linear(hidden_size, self.n_actions)
+        # self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, self.n_actions)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -98,9 +99,8 @@ class Policy(nn.Module):
         if x.dim() > 2:
             x = x.flatten(start_dim=1)
         x = torch.relu(self.fc1(x))
-        logits = self.fc2(x)
-
-        # return torch.unflatten(torch.softmax(logits, dim=-1), 0, (1, self.n_actions))
+        # x = torch.relu(self.fc2(x))
+        logits = self.fc3(x)
         return torch.softmax(logits, dim=-1)
 
 
@@ -178,12 +178,13 @@ class REINFORCEAgent(AbstractAgent):
         x = self.policy(torch.tensor(state, dtype=torch.float32))
         info_out = {}
         if evaluate:
-            action = torch.argmax(x).item()
+            action = torch.argmax(x[0]).item()
         else:
             dist = torch.distributions.Categorical(x)
-            action = dist.sample().item()
-            log_prob = dist.log_prob(torch.tensor(action))
-            info_out["log_prob"] = log_prob  # .item()
+            action = dist.sample()
+            log_prob = dist.log_prob(action)
+            info_out["log_prob"] = log_prob
+            action = action.item()
         return action, info_out  # Placeholder return value
 
     def compute_returns(self, rewards: List[float]) -> torch.Tensor:
@@ -208,7 +209,7 @@ class REINFORCEAgent(AbstractAgent):
         # TODO: Convert the list of returns to a torch.Tensor and return
         R = 0
         returns = []
-        for r in rewards:
+        for r in reversed(rewards):
             R = r + self.gamma * R
             returns.insert(0, R)
         return torch.tensor(returns, dtype=torch.float32)
@@ -242,7 +243,7 @@ class REINFORCEAgent(AbstractAgent):
         # TODO: Normalize returns with mean and standard deviation,
         # and add 1e-8 to the denominator to avoid division by zero
         mean = returns_t.mean()
-        std = returns_t.std()
+        std = returns_t.std(unbiased=False)
         norm_returns = (returns_t - mean) / (std + 1e-8)
 
         lp_tensor = torch.stack(log_probs)
@@ -324,7 +325,7 @@ class REINFORCEAgent(AbstractAgent):
         # TODO: Return the mean and std of the returns across episodes
         # mean_return = np.mean(returns)
         # std_return = np.std(returns)
-        return returns
+        return np.mean(returns)
 
     def train(
         self,
@@ -356,7 +357,7 @@ class REINFORCEAgent(AbstractAgent):
                 batch.append((state, action, float(reward), next_state, done, info))
                 state = next_state
             # to limit the trajectory length
-            # batch = batch[:100]
+            # batch = batch[:2]
             loss = self.update_agent(batch)
             total_return = sum(r for _, _, r, *_ in batch)
             self.total_episodes += 1
@@ -366,7 +367,7 @@ class REINFORCEAgent(AbstractAgent):
 
             if ep % eval_interval == 0:
                 eval_rewards.append(self.evaluate(eval_env, num_episodes=eval_episodes))
-                print(f"[Eval ] Ep {ep:3d}")
+                print(f"[Eval ] Ep {ep:3d}, Return {eval_rewards[-1]:5.1f}")
 
         print("Training complete.")
         return eval_rewards
@@ -395,28 +396,34 @@ def main(cfg: DictConfig) -> None:
             eval_interval: int
             eval_episodes: int
     """
-    # Initialize environment and seed
-    env = gym.make(cfg.env.name)
-    set_seed(env, cfg.seed)
+    eval_rewards = []
+    for i in range(4):  # Initialize environment and seed
+        print("_________")
+        print(f"Seed: {i}")
+        print("_________")
+        env = gym.make(cfg.env.name)
+        set_seed(env, i)
 
-    # Instantiate agent with hyperparameters from config
-    agent = REINFORCEAgent(
-        env=env,
-        lr=cfg.agent.lr,
-        gamma=cfg.agent.gamma,
-        seed=cfg.seed,
-        hidden_size=cfg.agent.hidden_size,
-    )
+        # Instantiate agent with hyperparameters from config
+        agent = REINFORCEAgent(
+            env=env,
+            lr=cfg.agent.lr,
+            gamma=cfg.agent.gamma,
+            seed=cfg.seed,
+            hidden_size=cfg.agent.hidden_size,
+        )
 
-    # Train agent
-    eval_rewards = agent.train(
-        num_episodes=cfg.train.episodes,
-        eval_interval=cfg.train.eval_interval,
-        eval_episodes=cfg.train.eval_episodes,
-    )
-    df = pd.DataFrame({"seed": cfg.seed, "return": eval_rewards})
-    name = "alpha_1e-3"
-    csv_path = f"eval_{name}_seed{cfg.seed}.csv"
+        # Train agent
+        eval_rewards.append(
+            agent.train(
+                num_episodes=cfg.train.episodes,
+                eval_interval=cfg.train.eval_interval,
+                eval_episodes=cfg.train.eval_episodes,
+            )
+        )
+    df = pd.DataFrame({"seed": [0, 1, 2, 3], "return": eval_rewards})
+    name = "500_episodes"
+    csv_path = f"eval_{name}.csv"
     df.to_csv(csv_path, index=False)
 
 
