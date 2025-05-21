@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 
 import gymnasium as gym
 import hydra
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -134,8 +135,10 @@ class DQNAgent(AbstractAgent):
         # TODO: implement exponential‐decayin
         # ε = ε_final + (ε_start - ε_final) * exp(-total_steps / ε_decay)
         # Currently, it is constant and returns the starting value ε
-
-        return self.epsilon_start
+        eps = self.epsilon_final + (self.epsilon_start - self.epsilon_final) * np.exp(
+            -self.total_steps / self.epsilon_decay
+        )
+        return eps
 
     def predict_action(
         self, state: np.ndarray, evaluate: bool = False
@@ -161,18 +164,22 @@ class DQNAgent(AbstractAgent):
         if evaluate:
             # TODO: select purely greedy action from Q(s)
             with torch.no_grad():
-                qvals = ...  # noqa: F841
+                # qvals = ...  # noqa: F841
+                state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                qvals = self.q(state_tensor)
 
-            action = None
+            action = int(torch.argmax(qvals, dim=1).item())
         else:
             if np.random.rand() < self.epsilon():
                 # TODO: sample random action
-                action = None
+                action = self.env.action_space.sample()
             else:
                 # TODO: select purely greedy action from Q(s)
-                action = None
+                state_tensor = torch.tensor(state, dtype=torch.float32).unsqueeze(0)
+                qvals = self.q(state_tensor)
+                action = int(torch.argmax(qvals, dim=1).item())
 
-        return action
+        return action  # , {}
 
     def save(self, path: str) -> None:
         """
@@ -229,11 +236,14 @@ class DQNAgent(AbstractAgent):
         mask = torch.tensor(np.array(dones), dtype=torch.float32)  # noqa: F841
 
         # # TODO: pass batched states through self.q and gather Q(s,a)
-        pred = ...
+        qvals = self.q(s)
+        pred = qvals.gather(1, a)  # pred = qvals#.squeeze()  # qvals.gather(1, a)
 
         # TODO: compute TD target with frozen network
         with torch.no_grad():
-            target = ...
+            max_next_qvals = self.target_q(s_next).max(dim=1)[0]
+            target = r + self.gamma * (1 - mask) * max_next_qvals
+            target = target.unsqueeze(1)
 
         loss = nn.MSELoss()(pred, target)
 
@@ -263,6 +273,7 @@ class DQNAgent(AbstractAgent):
         state, _ = self.env.reset()
         ep_reward = 0.0
         recent_rewards: List[float] = []
+        frames: List[int] = []
 
         for frame in range(1, num_frames + 1):
             action = self.predict_action(state)
@@ -276,22 +287,34 @@ class DQNAgent(AbstractAgent):
             # update if ready
             if len(self.buffer) >= self.batch_size:
                 # TODO: sample a batch from replay buffer
-                batch = ...
+                batch = self.buffer.sample(self.batch_size)
                 _ = self.update_agent(batch)
 
             if done or truncated:
                 state, _ = self.env.reset()
                 recent_rewards.append(ep_reward)
+                frames.append(frame)
                 ep_reward = 0.0
                 # logging
                 if len(recent_rewards) % 10 == 0:
                     # TODO: compute avg over last eval_interval episodes and print
-                    avg = ...
+                    avg = np.mean(recent_rewards[-eval_interval:])
                     print(
                         f"Frame {frame}, AvgReward(10): {avg:.2f}, ε={self.epsilon():.3f}"
                     )
+                
 
         print("Training complete.")
+
+        plt.figure()
+        plt.plot(frames, recent_rewards, linestyle="-", label="Reward")
+        plt.xlabel("Frame")
+        plt.ylabel("Reward")
+        plt.title("Reward over Time (Frames)")
+        plt.legend()
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
 
 @hydra.main(config_path="../configs/agent/", config_name="dqn", version_base="1.1")
@@ -301,8 +324,20 @@ def main(cfg: DictConfig):
     set_seed(env, cfg.seed)
 
     # 3) TODO: instantiate & train the agent
-    agent = ...
-    agent.train(...)
+    agent = DQNAgent(
+        env,
+        buffer_capacity=cfg.agent.buffer_capacity,
+        batch_size=cfg.agent.batch_size,
+        lr=cfg.agent.learning_rate,
+        gamma=cfg.agent.gamma,
+        epsilon_start=cfg.agent.epsilon_start,
+        epsilon_final=cfg.agent.epsilon_final,
+        epsilon_decay=cfg.agent.epsilon_decay,
+        target_update_freq=cfg.agent.target_update_freq,
+        seed=cfg.seed,
+    )
+
+    agent.train(num_frames=cfg.train.num_frames, eval_interval=cfg.train.eval_interval)
 
 
 if __name__ == "__main__":
