@@ -243,14 +243,12 @@ class REINFORCEAgent(AbstractAgent):
 
         # compute discounted returns
         returns_t = self.compute_returns(rewards)
-        print("returns:", returns_t)
 
         # TODO: Normalize returns with mean and standard deviation,
         # and add 1e-8 to the denominator to avoid division by zero
         mean = returns_t.mean()
-        std = returns_t.std()
+        std = returns_t.std(unbiased=False)
         norm_returns = (returns_t - mean) / (std + 1e-8)
-        # norm_returns = returns_t
 
         lp_tensor = torch.stack(log_probs)
         loss = -torch.sum(lp_tensor * norm_returns)
